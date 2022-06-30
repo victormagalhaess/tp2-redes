@@ -183,6 +183,7 @@ void AddEquipment(char *response, struct sockaddr_in clientCon)
     numberOfClients++;
     int bytesSent = sendUdpMessage(response, &clientCon);
     validateCommunication(bytesSent);
+    printf("Equipment %d added\n", equipmentIdCounter - 1);
 }
 
 int findEquipmentAddress(struct sockaddr_in *clientCon, int id)
@@ -227,6 +228,7 @@ void RemoveEquipment(char *response, struct sockaddr_in originalCon)
     if (deleted)
     {
         buildOK(response, originId, SUCCESFUL_REMOVAL);
+        printf("Equipment %d removed\n", originId);
     }
     else
     {
@@ -261,7 +263,7 @@ void GetEquipmentInfo(char *response, struct sockaddr_in clientCon, char *inputB
     }
     else
     {
-        int bytesSent = sendUdpMessage(response, &destinationCon);
+        int bytesSent = sendUdpMessage(inputBuffer, &destinationCon);
         validateCommunication(bytesSent);
     }
 }
