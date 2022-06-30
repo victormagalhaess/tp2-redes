@@ -6,7 +6,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include <time.h>
 #include <pthread.h>
 
 #define INPUT_ARGS 2
@@ -14,7 +13,7 @@
 #define MAX_PENDING 5
 #define BUFSIZE 500
 
-int sock;
+int serverSock;
 int numberOfThreads = 0;
 
 void *ThreadMain(void *arg);
@@ -23,13 +22,7 @@ struct ThreadArgs
 {
     socklen_t clientLen;
     struct sockaddr_in clientCon;
-    char buf[BUFSIZE];
-};
-
-struct Thread
-{
-    int connection_id;
-    struct Thread *next_thread;
+    char buffer[BUFSIZE];
 };
 
 int buildServerSocket(char *portString)
@@ -68,16 +61,16 @@ int buildServerSocket(char *portString)
     return sock;
 }
 
-void *ThreadMain(void *req)
+void *ThreadMain(void *args)
 {
-    struct ThreadArgs *request = (struct ThreadArgs *)req;
-    char *message = request->buf;
-    int connection_id = request->clientCon.sin_port;
-    struct sockaddr_in from = request->clientCon;
+    struct ThreadArgs *threadArgs = (struct ThreadArgs *)args;
+    char *message = threadArgs->buffer;
+    int connection_id = threadArgs->clientCon.sin_port;
+    struct sockaddr_in from = threadArgs->clientCon;
     char *ip = inet_ntoa(from.sin_addr);
     printf("%s:%d: %s\n", ip, connection_id, message);
     char *response = "OK\n";
-    int bytesSent = sendto(sock, response, strlen(response), 0, (struct sockaddr *)&request->clientCon, request->clientLen);
+    int bytesSent = sendto(serverSock, response, strlen(response), 0, (struct sockaddr *)&threadArgs->clientCon, threadArgs->clientLen);
     validateCommunication(bytesSent);
     return NULL;
 }
@@ -86,7 +79,7 @@ int main(int argc, char const *argv[])
 {
     validateInputArgs(argc, 2);
     char *port = strdup(argv[1]);
-    sock = buildServerSocket(port);
+    serverSock = buildServerSocket(port);
 
     pthread_t threads[MAX_THREADS];
 
@@ -94,7 +87,7 @@ int main(int argc, char const *argv[])
     {
         struct ThreadArgs *threadArgs = (struct ThreadArgs *)malloc(sizeof(struct ThreadArgs));
         threadArgs->clientLen = sizeof(struct sockaddr_in);
-        int bytesReceived = recvfrom(sock, threadArgs->buf, BUFSIZE, 0, (struct sockaddr *)&threadArgs->clientCon, &threadArgs->clientLen);
+        int bytesReceived = recvfrom(serverSock, threadArgs->buffer, BUFSIZE, 0, (struct sockaddr *)&threadArgs->clientCon, &threadArgs->clientLen);
         validateCommunication(bytesReceived);
 
         int threadStatus = pthread_create(&threads[numberOfThreads], NULL, ThreadMain, (void *)threadArgs);
