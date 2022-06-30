@@ -45,6 +45,7 @@ int numberOfThreads = 0;
 int numberOfClients = 0;
 int equipmentIdCounter = 1;
 int equipmentsIds[MAX_CLIENTS] = {0};
+struct sockaddr_in equipmentsAdresses[MAX_CLIENTS] = {0};
 
 void *ThreadMain(void *arg);
 
@@ -123,6 +124,7 @@ void assembleMessage(char *buffer, struct Message *message)
         sprintf(partialMessage, "%d", message->Payload);
         strcat(finalMessage, partialMessage);
     }
+    strcat(finalMessage, "\n");
     strcpy(buffer, finalMessage);
 }
 
@@ -138,14 +140,11 @@ void buildERROR(char *buffer, int idDestination, int payload)
 
 void buildRESADD(char *buffer)
 {
-
     struct Message message;
     message.IdMsg = RES_ADD_ID;
     message.IdOrigin = EQUIPMENT_NONE;
     message.IdDestination = EQUIPMENT_NONE;
     message.Payload = equipmentIdCounter;
-    equipmentsIds[numberOfClients] = equipmentIdCounter;
-    equipmentIdCounter++;
     assembleMessage(buffer, &message);
 }
 
@@ -166,9 +165,31 @@ int IdentifyMessage(char *buffer)
     return id;
 }
 
-void AddEquipment(char *response)
+void AddEquipment(char *response, struct sockaddr_in clientCon)
 {
+    equipmentsIds[numberOfClients] = equipmentIdCounter;
+    equipmentsAdresses[numberOfClients] = clientCon;
     buildRESADD(response);
+    equipmentIdCounter++;
+    numberOfClients++;
+    socklen_t clientLen = sizeof(struct sockaddr_in);
+    int bytesSent = sendto(serverSock, response, strlen(response), 0, (struct sockaddr *)&clientCon, clientLen);
+    validateCommunication(bytesSent);
+}
+
+int findEquipmentAddress(struct sockaddr_in *clientCon, int id)
+{
+    int found = 0;
+    for (int i = 0; i < numberOfClients; i++)
+    {
+        if (equipmentsIds[i] == id)
+        {
+            *clientCon = equipmentsAdresses[i];
+            found = 1;
+            break;
+        }
+    }
+    return found;
 }
 
 void RemoveEquipment(char *response)
@@ -182,9 +203,14 @@ void RemoveEquipment(char *response)
         {
             equipmentsIds[i] = equipmentsIds[numberOfClients];
             equipmentsIds[numberOfClients] = 0;
+            equipmentsAdresses[i] = equipmentsAdresses[numberOfClients];
+            memset(&equipmentsAdresses[numberOfClients], 0, sizeof(equipmentsAdresses[numberOfClients]));
             deleted = 1;
+            numberOfClients--;
         }
     }
+    struct sockaddr_in clientCon;
+    findEquipmentAddress(&clientCon, originId);
     if (deleted)
     {
         buildOK(response, originId, SUCCESFUL_REMOVAL);
@@ -193,35 +219,61 @@ void RemoveEquipment(char *response)
     {
         buildERROR(response, EQUIPMENT_NONE, EQUIPMENT_NOT_FOUND);
     }
+
+    socklen_t clientLen = sizeof(struct sockaddr_in);
+    int bytesSent = sendto(serverSock, response, strlen(response), 0, (struct sockaddr *)&clientCon, clientLen);
+    validateCommunication(bytesSent);
+}
+
+void GetEquipmentInfo(char *response, struct sockaddr_in clientCon, char *inputBuffer)
+{
+    socklen_t clientLen = sizeof(struct sockaddr_in);
+    char *command = strtok(NULL, " ");
+    int originId = atoi(command);
+    command = strtok(NULL, " ");
+    int destinationId = atoi(command);
+    struct sockaddr_in originCon;
+    int foundOrigin = findEquipmentAddress(&originCon, originId);
+    struct sockaddr_in destinationCon;
+    int foundDestination = findEquipmentAddress(&destinationCon, destinationId);
+    if (!foundOrigin)
+    {
+        buildERROR(response, EQUIPMENT_NONE, SOURCE_EQUIPMENT_NOT_FOUND);
+        printf("Equipment %d not found\n", originId);
+        int bytesSent = sendto(serverSock, response, strlen(response), 0, (struct sockaddr *)&clientCon, clientLen);
+        validateCommunication(bytesSent);
+    }
+    else if (!foundDestination)
+    {
+        buildERROR(response, EQUIPMENT_NONE, TARGET_EQUIPMENT_NOT_FOUND);
+        printf("Equipment %d not found\n", destinationId);
+        int bytesSent = sendto(serverSock, response, strlen(response), 0, (struct sockaddr *)&originCon, clientLen);
+        validateCommunication(bytesSent);
+    }
+    else
+    {
+        int bytesSent = sendto(serverSock, inputBuffer, strlen(inputBuffer), 0, (struct sockaddr *)&destinationCon, clientLen);
+        validateCommunication(bytesSent);
+    }
 }
 
 void *ThreadMain(void *args)
 {
     struct ThreadArgs *threadArgs = (struct ThreadArgs *)args;
-    int idMessage = IdentifyMessage(threadArgs->buffer);
+    int idMessage = IdentifyMessage(strdup(threadArgs->buffer));
     char response[BUFSIZE] = "";
     switch (idMessage)
     {
     case REQ_ADD_ID:
-        numberOfClients++;
-        AddEquipment(response);
+        AddEquipment(response, threadArgs->clientCon);
         break;
     case REQ_REM_ID:
-        numberOfClients--;
         RemoveEquipment(response);
         break;
     case REQ_INF_ID:
-        // GetEquipmentInfo(threadArgs->buffer);
+        GetEquipmentInfo(threadArgs->buffer, threadArgs->clientCon, threadArgs->buffer);
         break;
     }
-
-    char *message = threadArgs->buffer;
-    int connection_id = threadArgs->clientCon.sin_port;
-    struct sockaddr_in from = threadArgs->clientCon;
-    char *ip = inet_ntoa(from.sin_addr);
-    printf("%s:%d: %s\n", ip, connection_id, message);
-    int bytesSent = sendto(serverSock, response, strlen(response), 0, (struct sockaddr *)&threadArgs->clientCon, threadArgs->clientLen);
-    validateCommunication(bytesSent);
 
     free(threadArgs);
     numberOfThreads--;
@@ -242,8 +294,6 @@ int main(int argc, char const *argv[])
         threadArgs->clientLen = sizeof(struct sockaddr_in);
         int bytesReceived = recvfrom(serverSock, threadArgs->buffer, BUFSIZE, 0, (struct sockaddr *)&threadArgs->clientCon, &threadArgs->clientLen);
         validateCommunication(bytesReceived);
-        printf("numberOfClients: %d\n", numberOfClients);
-        printf("%s\n", threadArgs->buffer);
         int firstReqId = IdentifyMessage(strdup(threadArgs->buffer));
         if (numberOfClients == MAX_CLIENTS - 1 && firstReqId == REQ_ADD_ID)
         {
