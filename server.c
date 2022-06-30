@@ -228,10 +228,8 @@ void RemoveEquipment(char *response)
 void GetEquipmentInfo(char *response, struct sockaddr_in clientCon, char *inputBuffer)
 {
     socklen_t clientLen = sizeof(struct sockaddr_in);
-    char *command = strtok(NULL, " ");
-    int originId = atoi(command);
-    command = strtok(NULL, " ");
-    int destinationId = atoi(command);
+    int originId = atoi(strtok(NULL, " "));
+    int destinationId = atoi(strtok(NULL, " "));
     struct sockaddr_in originCon;
     int foundOrigin = findEquipmentAddress(&originCon, originId);
     struct sockaddr_in destinationCon;
@@ -271,7 +269,8 @@ void *ThreadMain(void *args)
         RemoveEquipment(response);
         break;
     case REQ_INF_ID:
-        GetEquipmentInfo(threadArgs->buffer, threadArgs->clientCon, threadArgs->buffer);
+    case RES_INF_ID:
+        GetEquipmentInfo(response, threadArgs->clientCon, threadArgs->buffer);
         break;
     }
 
