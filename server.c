@@ -167,6 +167,21 @@ void buildOK(char *buffer, int idOrigin, int status)
     assembleMessage(buffer, &message);
 }
 
+void buildRESLIST(char *buffer)
+{
+    struct Message message;
+    message.IdMsg = RES_LIST_ID;
+    message.IdOrigin = EQUIPMENT_NONE;
+    message.IdDestination = EQUIPMENT_NONE;
+    message.Payload = 0;
+    assembleMessage(buffer, &message);
+    buffer[strlen(buffer) - 1] = '\0';
+    for (int i = 0; i < numberOfClients; i++)
+    {
+        sprintf(buffer, "%s%d ", buffer, equipmentsIds[i]);
+    }
+}
+
 int IdentifyMessage(char *buffer)
 {
     char *command = strtok(buffer, " ");
@@ -182,6 +197,9 @@ void AddEquipment(char *response, struct sockaddr_in clientCon)
     equipmentIdCounter++;
     numberOfClients++;
     int bytesSent = sendUdpMessage(response, &clientCon);
+    validateCommunication(bytesSent);
+    buildRESLIST(response);
+    bytesSent = sendUdpMessage(response, &clientCon);
     validateCommunication(bytesSent);
     printf("Equipment %d added\n", equipmentIdCounter - 1);
 }
