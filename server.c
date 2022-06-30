@@ -13,8 +13,8 @@
 #define MAX_CLIENTS 15
 #define MAX_PENDING 5
 #define BUFSIZE 500
-#define EQUIPMENT_NONE 0
 
+// messages enum
 enum
 {
     REQ_ADD_ID = 1,
@@ -27,14 +27,17 @@ enum
     OK_ID,
 };
 
+// errors enum
 enum
 {
-    EQUIPMENT_NOT_FOUND = 1,
+    EQUIPMENT_NONE = 0,
+    EQUIPMENT_NOT_FOUND,
     SOURCE_EQUIPMENT_NOT_FOUND,
     TARGET_EQUIPMENT_NOT_FOUND,
     EQUIPMENT_LIMIT_EXCEEDED,
 };
 
+// successes enum
 enum
 {
     SUCCESFUL_REMOVAL = 1
@@ -46,6 +49,7 @@ int numberOfClients = 0;
 int equipmentIdCounter = 1;
 int equipmentsIds[MAX_CLIENTS] = {0};
 struct sockaddr_in equipmentsAdresses[MAX_CLIENTS] = {0};
+socklen_t clientLen = sizeof(struct sockaddr_in);
 
 void *ThreadMain(void *arg);
 
@@ -63,6 +67,11 @@ struct Message
     int IdDestination;
     int Payload;
 };
+
+int sendUdpMessage(char *response, struct sockaddr_in *clientCon)
+{
+    return sendto(serverSock, response, strlen(response), 0, (struct sockaddr *)clientCon, clientLen);
+}
 
 int buildServerSocket(char *portString)
 {
@@ -172,8 +181,7 @@ void AddEquipment(char *response, struct sockaddr_in clientCon)
     buildRESADD(response);
     equipmentIdCounter++;
     numberOfClients++;
-    socklen_t clientLen = sizeof(struct sockaddr_in);
-    int bytesSent = sendto(serverSock, response, strlen(response), 0, (struct sockaddr *)&clientCon, clientLen);
+    int bytesSent = sendUdpMessage(response, &clientCon);
     validateCommunication(bytesSent);
 }
 
@@ -192,7 +200,7 @@ int findEquipmentAddress(struct sockaddr_in *clientCon, int id)
     return found;
 }
 
-void RemoveEquipment(char *response)
+void RemoveEquipment(char *response, struct sockaddr_in originalCon)
 {
     char *command = strtok(NULL, " ");
     int originId = atoi(command);
@@ -201,16 +209,21 @@ void RemoveEquipment(char *response)
     {
         if (equipmentsIds[i] == originId)
         {
-            equipmentsIds[i] = equipmentsIds[numberOfClients];
-            equipmentsIds[numberOfClients] = 0;
-            equipmentsAdresses[i] = equipmentsAdresses[numberOfClients];
-            memset(&equipmentsAdresses[numberOfClients], 0, sizeof(equipmentsAdresses[numberOfClients]));
+            equipmentsIds[i] = equipmentsIds[numberOfClients - 1];
+            equipmentsIds[numberOfClients - 1] = 0;
+            equipmentsAdresses[i] = equipmentsAdresses[numberOfClients - 1];
+            memset(&equipmentsAdresses[numberOfClients - 1], 0, sizeof(equipmentsAdresses[numberOfClients - 1]));
             deleted = 1;
             numberOfClients--;
         }
     }
     struct sockaddr_in clientCon;
-    findEquipmentAddress(&clientCon, originId);
+    int found = findEquipmentAddress(&clientCon, originId);
+    if (!found)
+    {
+        clientCon = originalCon;
+    }
+
     if (deleted)
     {
         buildOK(response, originId, SUCCESFUL_REMOVAL);
@@ -220,14 +233,12 @@ void RemoveEquipment(char *response)
         buildERROR(response, EQUIPMENT_NONE, EQUIPMENT_NOT_FOUND);
     }
 
-    socklen_t clientLen = sizeof(struct sockaddr_in);
-    int bytesSent = sendto(serverSock, response, strlen(response), 0, (struct sockaddr *)&clientCon, clientLen);
+    int bytesSent = sendUdpMessage(response, &clientCon);
     validateCommunication(bytesSent);
 }
 
 void GetEquipmentInfo(char *response, struct sockaddr_in clientCon, char *inputBuffer)
 {
-    socklen_t clientLen = sizeof(struct sockaddr_in);
     int originId = atoi(strtok(NULL, " "));
     int destinationId = atoi(strtok(NULL, " "));
     struct sockaddr_in originCon;
@@ -238,19 +249,19 @@ void GetEquipmentInfo(char *response, struct sockaddr_in clientCon, char *inputB
     {
         buildERROR(response, EQUIPMENT_NONE, SOURCE_EQUIPMENT_NOT_FOUND);
         printf("Equipment %d not found\n", originId);
-        int bytesSent = sendto(serverSock, response, strlen(response), 0, (struct sockaddr *)&clientCon, clientLen);
+        int bytesSent = sendUdpMessage(response, &clientCon);
         validateCommunication(bytesSent);
     }
     else if (!foundDestination)
     {
         buildERROR(response, EQUIPMENT_NONE, TARGET_EQUIPMENT_NOT_FOUND);
         printf("Equipment %d not found\n", destinationId);
-        int bytesSent = sendto(serverSock, response, strlen(response), 0, (struct sockaddr *)&originCon, clientLen);
+        int bytesSent = sendUdpMessage(response, &originCon);
         validateCommunication(bytesSent);
     }
     else
     {
-        int bytesSent = sendto(serverSock, inputBuffer, strlen(inputBuffer), 0, (struct sockaddr *)&destinationCon, clientLen);
+        int bytesSent = sendUdpMessage(response, &destinationCon);
         validateCommunication(bytesSent);
     }
 }
@@ -266,7 +277,7 @@ void *ThreadMain(void *args)
         AddEquipment(response, threadArgs->clientCon);
         break;
     case REQ_REM_ID:
-        RemoveEquipment(response);
+        RemoveEquipment(response, threadArgs->clientCon);
         break;
     case REQ_INF_ID:
     case RES_INF_ID:
@@ -290,7 +301,7 @@ int main(int argc, char const *argv[])
     for (;;)
     {
         struct ThreadArgs *threadArgs = (struct ThreadArgs *)malloc(sizeof(struct ThreadArgs));
-        threadArgs->clientLen = sizeof(struct sockaddr_in);
+        threadArgs->clientLen = clientLen;
         int bytesReceived = recvfrom(serverSock, threadArgs->buffer, BUFSIZE, 0, (struct sockaddr *)&threadArgs->clientCon, &threadArgs->clientLen);
         validateCommunication(bytesReceived);
         int firstReqId = IdentifyMessage(strdup(threadArgs->buffer));
@@ -298,7 +309,7 @@ int main(int argc, char const *argv[])
         {
             char response[BUFFER_SIZE_BYTES] = "";
             buildERROR(response, EQUIPMENT_NONE, EQUIPMENT_LIMIT_EXCEEDED);
-            int bytesSent = sendto(serverSock, response, strlen(response), 0, (struct sockaddr *)&threadArgs->clientCon, threadArgs->clientLen);
+            int bytesSent = sendUdpMessage(response, &threadArgs->clientCon);
             validateCommunication(bytesSent);
             continue;
         }
