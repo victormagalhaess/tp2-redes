@@ -10,9 +10,27 @@
 #include <pthread.h>
 
 #define INPUT_ARGS 2
-#define MAX_CLIENTS 15
+#define MAX_THREADS 15
 #define MAX_PENDING 5
 #define BUFSIZE 500
+
+int sock;
+int numberOfThreads = 0;
+
+void *ThreadMain(void *arg);
+
+struct ThreadArgs
+{
+    socklen_t clientLen;
+    struct sockaddr_in clientCon;
+    char buf[BUFSIZE];
+};
+
+struct Thread
+{
+    int connection_id;
+    struct Thread *next_thread;
+};
 
 int buildServerSocket(char *portString)
 {
@@ -50,26 +68,44 @@ int buildServerSocket(char *portString)
     return sock;
 }
 
+void *ThreadMain(void *req)
+{
+    struct ThreadArgs *request = (struct ThreadArgs *)req;
+    char *message = request->buf;
+    int connection_id = request->clientCon.sin_port;
+    struct sockaddr_in from = request->clientCon;
+    char *ip = inet_ntoa(from.sin_addr);
+    printf("%s:%d: %s\n", ip, connection_id, message);
+    char *response = "OK\n";
+    int bytesSent = sendto(sock, response, strlen(response), 0, (struct sockaddr *)&request->clientCon, request->clientLen);
+    validateCommunication(bytesSent);
+    return NULL;
+}
+
 int main(int argc, char const *argv[])
 {
-
     validateInputArgs(argc, 2);
     char *port = strdup(argv[1]);
-    int sock = buildServerSocket(port);
+    sock = buildServerSocket(port);
 
-    char buffer[BUFFER_SIZE_BYTES] = "";
-    struct sockaddr_in client_address;
-    socklen_t client_address_len = sizeof(client_address);
+    pthread_t threads[MAX_THREADS];
 
     for (;;)
     {
-        memset(buffer, 0, sizeof(buffer));
-        int totalBytesRead = recvfrom(sock, buffer, BUFFER_SIZE_BYTES, 0, (struct sockaddr *)&client_address, &client_address_len);
-        validateCommunication(totalBytesRead);
-        buffer[totalBytesRead] = '\0';
-        printf("%s\n", buffer);
-        int totalBytesSent = sendto(sock, buffer, strlen(buffer), 0, (struct sockaddr *)&client_address, client_address_len);
-        validateCommunication(totalBytesSent);
+        struct ThreadArgs *threadArgs = (struct ThreadArgs *)malloc(sizeof(struct ThreadArgs));
+        threadArgs->clientLen = sizeof(struct sockaddr_in);
+        int bytesReceived = recvfrom(sock, threadArgs->buf, BUFSIZE, 0, (struct sockaddr *)&threadArgs->clientCon, &threadArgs->clientLen);
+        validateCommunication(bytesReceived);
+
+        int threadStatus = pthread_create(&threads[numberOfThreads], NULL, ThreadMain, (void *)threadArgs);
+        if (threadStatus != 0)
+        {
+            dieWithMessage("pthread_create failed");
+        }
+        else
+        {
+            numberOfThreads++;
+        }
     }
     return 0;
 }
