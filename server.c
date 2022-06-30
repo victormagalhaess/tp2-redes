@@ -43,6 +43,8 @@ enum
 int serverSock;
 int numberOfThreads = 0;
 int numberOfClients = 0;
+int equipmentIdCounter = 1;
+int equipmentsIds[MAX_CLIENTS] = {0};
 
 void *ThreadMain(void *arg);
 
@@ -136,11 +138,24 @@ void buildERROR(char *buffer, int idDestination, int payload)
 
 void buildRESADD(char *buffer)
 {
+
     struct Message message;
     message.IdMsg = RES_ADD_ID;
     message.IdOrigin = EQUIPMENT_NONE;
     message.IdDestination = EQUIPMENT_NONE;
-    message.Payload = numberOfClients;
+    message.Payload = equipmentIdCounter;
+    equipmentsIds[numberOfClients] = equipmentIdCounter;
+    equipmentIdCounter++;
+    assembleMessage(buffer, &message);
+}
+
+void buildOK(char *buffer, int idOrigin, int status)
+{
+    struct Message message;
+    message.IdMsg = OK_ID;
+    message.IdOrigin = idOrigin;
+    message.IdDestination = EQUIPMENT_NONE;
+    message.Payload = status;
     assembleMessage(buffer, &message);
 }
 
@@ -156,6 +171,30 @@ void AddEquipment(char *response)
     buildRESADD(response);
 }
 
+void RemoveEquipment(char *response)
+{
+    char *command = strtok(NULL, " ");
+    int originId = atoi(command);
+    int deleted = 0;
+    for (int i = 0; i < MAX_CLIENTS; i++) // logical removal of equipment
+    {
+        if (equipmentsIds[i] == originId)
+        {
+            equipmentsIds[i] = equipmentsIds[numberOfClients];
+            equipmentsIds[numberOfClients] = 0;
+            deleted = 1;
+        }
+    }
+    if (deleted)
+    {
+        buildOK(response, originId, SUCCESFUL_REMOVAL);
+    }
+    else
+    {
+        buildERROR(response, EQUIPMENT_NONE, EQUIPMENT_NOT_FOUND);
+    }
+}
+
 void *ThreadMain(void *args)
 {
     struct ThreadArgs *threadArgs = (struct ThreadArgs *)args;
@@ -169,7 +208,7 @@ void *ThreadMain(void *args)
         break;
     case REQ_REM_ID:
         numberOfClients--;
-        // RemoveEquipment(threadArgs->buffer);
+        RemoveEquipment(response);
         break;
     case REQ_INF_ID:
         // GetEquipmentInfo(threadArgs->buffer);
@@ -205,7 +244,8 @@ int main(int argc, char const *argv[])
         validateCommunication(bytesReceived);
         printf("numberOfClients: %d\n", numberOfClients);
         printf("%s\n", threadArgs->buffer);
-        if (numberOfClients == MAX_CLIENTS)
+        int firstReqId = IdentifyMessage(strdup(threadArgs->buffer));
+        if (numberOfClients == MAX_CLIENTS - 1 && firstReqId == REQ_ADD_ID)
         {
             char response[BUFFER_SIZE_BYTES] = "";
             buildERROR(response, EQUIPMENT_NONE, EQUIPMENT_LIMIT_EXCEEDED);
