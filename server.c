@@ -43,7 +43,7 @@ enum
     SUCCESFUL_REMOVAL = 1
 };
 
-int clientSock;
+int serverSock;
 int numberOfThreads = 0;
 int numberOfClients = 0;
 int equipmentIdCounter = 1;
@@ -51,7 +51,7 @@ int equipmentsIds[MAX_CLIENTS] = {0};
 struct sockaddr_in equipmentsAdresses[MAX_CLIENTS] = {0};
 socklen_t clientLen = sizeof(struct sockaddr_in);
 
-void *ReceiveThread(void *arg);
+void *ThreadMain(void *arg);
 
 struct ThreadArgs
 {
@@ -155,10 +155,10 @@ void AddEquipment(char *response, struct sockaddr_in clientCon)
     buildRESADD(response);
     equipmentIdCounter++;
     numberOfClients++;
-    int bytesSent = sendUdpMessage(clientSock, response, &clientCon);
+    int bytesSent = sendUdpMessage(serverSock, response, &clientCon);
     validateCommunication(bytesSent);
     buildRESLIST(response);
-    bytesSent = sendUdpMessage(clientSock, response, &clientCon);
+    bytesSent = sendUdpMessage(serverSock, response, &clientCon);
     validateCommunication(bytesSent);
     printf("Equipment %d added\n", equipmentIdCounter - 1);
 }
@@ -212,7 +212,7 @@ void RemoveEquipment(char *response, struct sockaddr_in originalCon)
         buildERROR(response, EQUIPMENT_NONE, EQUIPMENT_NOT_FOUND);
     }
 
-    int bytesSent = sendUdpMessage(clientSock, response, &clientCon);
+    int bytesSent = sendUdpMessage(serverSock, response, &clientCon);
     validateCommunication(bytesSent);
 }
 
@@ -228,24 +228,24 @@ void GetEquipmentInfo(char *response, struct sockaddr_in clientCon, char *inputB
     {
         buildERROR(response, EQUIPMENT_NONE, SOURCE_EQUIPMENT_NOT_FOUND);
         printf("Equipment %d not found\n", originId);
-        int bytesSent = sendUdpMessage(clientSock, response, &clientCon);
+        int bytesSent = sendUdpMessage(serverSock, response, &clientCon);
         validateCommunication(bytesSent);
     }
     else if (!foundDestination)
     {
         buildERROR(response, EQUIPMENT_NONE, TARGET_EQUIPMENT_NOT_FOUND);
         printf("Equipment %d not found\n", destinationId);
-        int bytesSent = sendUdpMessage(clientSock, response, &originCon);
+        int bytesSent = sendUdpMessage(serverSock, response, &originCon);
         validateCommunication(bytesSent);
     }
     else
     {
-        int bytesSent = sendUdpMessage(clientSock, inputBuffer, &destinationCon);
+        int bytesSent = sendUdpMessage(serverSock, inputBuffer, &destinationCon);
         validateCommunication(bytesSent);
     }
 }
 
-void *ReceiveThread(void *args)
+void *ThreadMain(void *args)
 {
     struct ThreadArgs *threadArgs = (struct ThreadArgs *)args;
     int idMessage = IdentifyMessage(strdup(threadArgs->buffer));
@@ -273,7 +273,7 @@ int main(int argc, char const *argv[])
 {
     validateInputArgs(argc, 2);
     char *port = strdup(argv[1]);
-    clientSock = buildUDPSocket(port);
+    serverSock = buildUDPSocket(port);
 
     pthread_t threads[MAX_THREADS];
 
@@ -281,19 +281,19 @@ int main(int argc, char const *argv[])
     {
         struct ThreadArgs *threadArgs = (struct ThreadArgs *)malloc(sizeof(struct ThreadArgs));
         threadArgs->clientLen = clientLen;
-        int bytesReceived = recvfrom(clientSock, threadArgs->buffer, BUFSIZE, 0, (struct sockaddr *)&threadArgs->clientCon, &threadArgs->clientLen);
+        int bytesReceived = recvfrom(serverSock, threadArgs->buffer, BUFSIZE, 0, (struct sockaddr *)&threadArgs->clientCon, &threadArgs->clientLen);
         validateCommunication(bytesReceived);
         int firstReqId = IdentifyMessage(strdup(threadArgs->buffer));
         if (numberOfClients == MAX_CLIENTS - 1 && firstReqId == REQ_ADD_ID)
         {
             char response[BUFFER_SIZE_BYTES] = "";
             buildERROR(response, EQUIPMENT_NONE, EQUIPMENT_LIMIT_EXCEEDED);
-            int bytesSent = sendUdpMessage(clientSock, response, &threadArgs->clientCon);
+            int bytesSent = sendUdpMessage(serverSock, response, &threadArgs->clientCon);
             validateCommunication(bytesSent);
             continue;
         }
 
-        int threadStatus = pthread_create(&threads[numberOfThreads], NULL, ReceiveThread, (void *)threadArgs);
+        int threadStatus = pthread_create(&threads[numberOfThreads], NULL, ThreadMain, (void *)threadArgs);
         if (threadStatus != 0)
         {
             dieWithMessage("pthread_create failed");
