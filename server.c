@@ -43,7 +43,7 @@ enum
     SUCCESFUL_REMOVAL = 1
 };
 
-int serverSock;
+int clientSock;
 int numberOfThreads = 0;
 int numberOfClients = 0;
 int equipmentIdCounter = 1;
@@ -51,7 +51,7 @@ int equipmentsIds[MAX_CLIENTS] = {0};
 struct sockaddr_in equipmentsAdresses[MAX_CLIENTS] = {0};
 socklen_t clientLen = sizeof(struct sockaddr_in);
 
-void *ThreadMain(void *arg);
+void *ReceiveThread(void *arg);
 
 struct ThreadArgs
 {
@@ -67,47 +67,6 @@ struct Message
     int IdDestination;
     int Payload;
 };
-
-int sendUdpMessage(char *response, struct sockaddr_in *clientCon)
-{
-    return sendto(serverSock, response, strlen(response), 0, (struct sockaddr *)clientCon, clientLen);
-}
-
-int buildServerSocket(char *portString)
-{
-
-    int sock;
-    int opt = 1;
-
-    struct sockaddr_in address;
-
-    int domain = AF_INET;
-    int port = getPort(portString);
-
-    if ((sock = socket(domain, SOCK_DGRAM, IPPROTO_UDP)) < 0)
-    {
-        dieWithMessage("socket failed");
-    }
-
-    if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, &opt, sizeof(opt)))
-    {
-        dieWithMessage("setsockopt failed");
-    }
-
-    address.sin_family = domain;
-    address.sin_addr.s_addr = htonl(INADDR_ANY);
-    address.sin_port = htons(port);
-
-    struct sockaddr *conAddress = (struct sockaddr *)&address;
-    int conSize = sizeof(address);
-
-    if (bind(sock, conAddress, conSize) < 0)
-    {
-        dieWithMessage("bind failed");
-    }
-
-    return sock;
-}
 
 void assembleMessage(char *buffer, struct Message *message)
 {
@@ -196,10 +155,10 @@ void AddEquipment(char *response, struct sockaddr_in clientCon)
     buildRESADD(response);
     equipmentIdCounter++;
     numberOfClients++;
-    int bytesSent = sendUdpMessage(response, &clientCon);
+    int bytesSent = sendUdpMessage(clientSock, response, &clientCon);
     validateCommunication(bytesSent);
     buildRESLIST(response);
-    bytesSent = sendUdpMessage(response, &clientCon);
+    bytesSent = sendUdpMessage(clientSock, response, &clientCon);
     validateCommunication(bytesSent);
     printf("Equipment %d added\n", equipmentIdCounter - 1);
 }
@@ -253,7 +212,7 @@ void RemoveEquipment(char *response, struct sockaddr_in originalCon)
         buildERROR(response, EQUIPMENT_NONE, EQUIPMENT_NOT_FOUND);
     }
 
-    int bytesSent = sendUdpMessage(response, &clientCon);
+    int bytesSent = sendUdpMessage(clientSock, response, &clientCon);
     validateCommunication(bytesSent);
 }
 
@@ -269,24 +228,24 @@ void GetEquipmentInfo(char *response, struct sockaddr_in clientCon, char *inputB
     {
         buildERROR(response, EQUIPMENT_NONE, SOURCE_EQUIPMENT_NOT_FOUND);
         printf("Equipment %d not found\n", originId);
-        int bytesSent = sendUdpMessage(response, &clientCon);
+        int bytesSent = sendUdpMessage(clientSock, response, &clientCon);
         validateCommunication(bytesSent);
     }
     else if (!foundDestination)
     {
         buildERROR(response, EQUIPMENT_NONE, TARGET_EQUIPMENT_NOT_FOUND);
         printf("Equipment %d not found\n", destinationId);
-        int bytesSent = sendUdpMessage(response, &originCon);
+        int bytesSent = sendUdpMessage(clientSock, response, &originCon);
         validateCommunication(bytesSent);
     }
     else
     {
-        int bytesSent = sendUdpMessage(inputBuffer, &destinationCon);
+        int bytesSent = sendUdpMessage(clientSock, inputBuffer, &destinationCon);
         validateCommunication(bytesSent);
     }
 }
 
-void *ThreadMain(void *args)
+void *ReceiveThread(void *args)
 {
     struct ThreadArgs *threadArgs = (struct ThreadArgs *)args;
     int idMessage = IdentifyMessage(strdup(threadArgs->buffer));
@@ -314,7 +273,7 @@ int main(int argc, char const *argv[])
 {
     validateInputArgs(argc, 2);
     char *port = strdup(argv[1]);
-    serverSock = buildServerSocket(port);
+    clientSock = buildUDPSocket(port);
 
     pthread_t threads[MAX_THREADS];
 
@@ -322,19 +281,19 @@ int main(int argc, char const *argv[])
     {
         struct ThreadArgs *threadArgs = (struct ThreadArgs *)malloc(sizeof(struct ThreadArgs));
         threadArgs->clientLen = clientLen;
-        int bytesReceived = recvfrom(serverSock, threadArgs->buffer, BUFSIZE, 0, (struct sockaddr *)&threadArgs->clientCon, &threadArgs->clientLen);
+        int bytesReceived = recvfrom(clientSock, threadArgs->buffer, BUFSIZE, 0, (struct sockaddr *)&threadArgs->clientCon, &threadArgs->clientLen);
         validateCommunication(bytesReceived);
         int firstReqId = IdentifyMessage(strdup(threadArgs->buffer));
         if (numberOfClients == MAX_CLIENTS - 1 && firstReqId == REQ_ADD_ID)
         {
             char response[BUFFER_SIZE_BYTES] = "";
             buildERROR(response, EQUIPMENT_NONE, EQUIPMENT_LIMIT_EXCEEDED);
-            int bytesSent = sendUdpMessage(response, &threadArgs->clientCon);
+            int bytesSent = sendUdpMessage(clientSock, response, &threadArgs->clientCon);
             validateCommunication(bytesSent);
             continue;
         }
 
-        int threadStatus = pthread_create(&threads[numberOfThreads], NULL, ThreadMain, (void *)threadArgs);
+        int threadStatus = pthread_create(&threads[numberOfThreads], NULL, ReceiveThread, (void *)threadArgs);
         if (threadStatus != 0)
         {
             dieWithMessage("pthread_create failed");
