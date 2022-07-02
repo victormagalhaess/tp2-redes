@@ -36,7 +36,7 @@ int getPort(char *portString)
     return -1; // never reached
 }
 
-int buildUDPSocket(char *portString)
+int buildUDPSocket(char *portString, int isBroadcast)
 {
 
     int sock;
@@ -52,9 +52,20 @@ int buildUDPSocket(char *portString)
         dieWithMessage("socket failed");
     }
 
-    if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, &opt, sizeof(opt)))
+    if (isBroadcast)
     {
-        dieWithMessage("setsockopt failed");
+        int broadcast = 1;
+        if (setsockopt(sock, SOL_SOCKET, SO_BROADCAST | SO_REUSEADDR, &broadcast, sizeof(broadcast)) == -1)
+        {
+            dieWithMessage("setsockopt BROADCAST failed");
+        }
+    }
+    else
+    {
+        if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, &opt, sizeof(opt)))
+        {
+            dieWithMessage("setsockopt UNICAST failed");
+        }
     }
 
     address.sin_family = domain;

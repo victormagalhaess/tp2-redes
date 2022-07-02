@@ -41,6 +41,13 @@ enum
     SUCCESFUL_REMOVAL = 1
 };
 
+// CAST options enum
+enum
+{
+    UNICAST = 0,
+    BROADCAST,
+};
+
 struct Message
 {
     int IdMsg;
@@ -53,7 +60,7 @@ void dieWithMessage(char *message);
 void validateInputArgs(int argc, int minArgs);
 void validateCommunication(int valread);
 int getPort(char *port);
-int buildUDPSocket(char *portString);
+int buildUDPSocket(char *portString, int isBroadcast);
 int sendUdpMessage(int originSock, char *response, struct sockaddr_in *targetSock);
 void assembleMessage(char *buffer, struct Message *message);
 int IdentifyMessage(char *buffer);

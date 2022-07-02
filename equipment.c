@@ -305,7 +305,8 @@ int main(int argc, char const *argv[])
     char *serverIP = strdup(argv[1]);
     char *serverPort = strdup(argv[2]);
     int serverPortNumber = getPort(serverPort);
-    clientSock = buildUDPSocket("0");
+    clientSock = buildUDPSocket("0", UNICAST);
+
     struct sockaddr_in serverAddr;
     serverAddr.sin_family = AF_INET;
     serverAddr.sin_port = htons(serverPortNumber);
