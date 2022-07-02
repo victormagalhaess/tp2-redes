@@ -62,6 +62,18 @@ void buildREQINFO(char *buffer, int destinationID)
     assembleMessage(buffer, &message);
 }
 
+void buildRESINFO(char *buffer, int idOrigin, int idDestination)
+{
+    struct Message message;
+    message.IdMsg = RES_INF_ID;
+    message.IdOrigin = idDestination;
+    message.IdDestination = idOrigin;
+    message.Payload = 0;
+    assembleMessage(buffer, &message);
+    buffer[strlen(buffer) - 1] = '\0';
+    sprintf(buffer, "%s%d.%d%d\n", buffer, rand() % 9, rand() % 9, rand() % 9); // nice little trick to fake a random decimal number
+}
+
 void RequestAdd(struct sockaddr_in serverAddr)
 {
     char message[BUFSIZE];
@@ -82,6 +94,14 @@ void RequestInfo(int targetEquipmentId, struct sockaddr_in serverAddr)
 {
     char message[BUFSIZE];
     buildREQINFO(message, targetEquipmentId);
+    int totalBytesSent = sendUdpMessage(clientSock, message, &serverAddr);
+    validateCommunication(totalBytesSent);
+}
+
+void RespondInfo(int originEquipmentId, int targetEquipmentId, struct sockaddr_in serverAddr)
+{
+    char message[BUFSIZE];
+    buildRESINFO(message, originEquipmentId, targetEquipmentId);
     int totalBytesSent = sendUdpMessage(clientSock, message, &serverAddr);
     validateCommunication(totalBytesSent);
 }
@@ -109,7 +129,6 @@ int parseCommand(char *command, void *targetEquipmentID)
     {
         return DISCONNECT_EQUIPMENT;
     }
-
     if (strcmp(strtok(command, " "), "request") == 0)
     {
         strtok(NULL, " "); // information
@@ -164,6 +183,63 @@ void readMessage(char *message)
     fgets(message, BUFSIZE - 1, stdin);
 }
 
+void processERRORID()
+{
+    int errorCode = atoi(strtok(NULL, " "));
+    switch (errorCode)
+    {
+    case EQUIPMENT_NOT_FOUND:
+        printf("Equipment not found\n");
+        break;
+    case SOURCE_EQUIPMENT_NOT_FOUND:
+        printf("Source equipment not found\n");
+        break;
+    case TARGET_EQUIPMENT_NOT_FOUND:
+        printf("Target equipment not found\n");
+        break;
+    case EQUIPMENT_LIMIT_EXCEEDED:
+        dieWithMessage("Equipment limit exceeded\n");
+        break;
+    }
+}
+
+void processRESADDID()
+{
+    equipmentId = atoi(strtok(NULL, " "));
+    printf("New ID: %d\n", equipmentId);
+}
+
+void processRESLISTID()
+{
+    int i = 0;
+    char *tok;
+    while ((tok = strtok(NULL, " ")) != NULL)
+    {
+        equipments[i] = atoi(tok);
+        i++;
+    }
+}
+
+void processOKID()
+{
+    dieWithMessage("Successful removal\n");
+}
+
+void processREQINFID(struct sockaddr_in serverAddr)
+{
+    int originId = atoi(strtok(NULL, " "));
+    int destinationId = atoi(strtok(NULL, " "));
+    RespondInfo(originId, destinationId, serverAddr);
+}
+
+void processRESINFID()
+{
+    int originId = atoi(strtok(NULL, " "));
+    strtok(NULL, " ");
+    char *payload = strtok(NULL, " ");
+    printf("Value from %d: %s", originId, payload);
+}
+
 void *ReceiveThread(void *data)
 {
     struct ThreadArgs *threadData = (struct ThreadArgs *)data;
@@ -173,45 +249,29 @@ void *ReceiveThread(void *data)
         memset(buffer, 0, sizeof(buffer));
         int bytesReceived = recvfrom(clientSock, buffer, BUFSIZE, 0, (struct sockaddr *)&threadData->serverAddr, &clientLen);
         validateCommunication(bytesReceived);
+        buffer[bytesReceived] = '\0';
         int status = atoi(strtok(buffer, " "));
-        if (status == ERROR_ID)
+
+        switch (status)
         {
-            int errorCode = atoi(strtok(NULL, " "));
-            switch (errorCode)
-            {
-            case EQUIPMENT_NOT_FOUND:
-                printf("Equipment not found\n");
-                break;
-            case SOURCE_EQUIPMENT_NOT_FOUND:
-                printf("Source equipment not found\n");
-                break;
-            case TARGET_EQUIPMENT_NOT_FOUND:
-                printf("Target equipment not found\n");
-                break;
-            case EQUIPMENT_LIMIT_EXCEEDED:
-                dieWithMessage("Equipment limit exceeded\n");
-                break;
-            }
-        }
-        if (status == RES_ADD_ID)
-        {
-            equipmentId = atoi(strtok(NULL, " "));
-            printf("New ID: %d\n", equipmentId);
-        }
-        if (status == RES_LIST_ID)
-        {
-            int i = 0;
-            buffer[bytesReceived] = '\0';
-            char *tok;
-            while ((tok = strtok(NULL, " ")) != NULL)
-            {
-                equipments[i] = atoi(tok);
-                i++;
-            }
-        }
-        if (status == OK_ID)
-        {
-            dieWithMessage("Successful removal\n");
+        case ERROR_ID:
+            processERRORID();
+            break;
+        case RES_ADD_ID:
+            processRESADDID();
+            break;
+        case RES_LIST_ID:
+            processRESLISTID();
+            break;
+        case OK_ID:
+            processOKID();
+            break;
+        case REQ_INF_ID:
+            processREQINFID(threadData->serverAddr);
+            break;
+        case RES_INF_ID:
+            processRESINFID();
+            break;
         }
     }
     free(threadData);
@@ -240,6 +300,7 @@ void *SendThread(void *data)
 
 int main(int argc, char const *argv[])
 {
+    srand(time(0));
     validateInputArgs(argc, 3);
     char *serverIP = strdup(argv[1]);
     char *serverPort = strdup(argv[2]);
