@@ -250,7 +250,7 @@ void *ReceiveThread(void *data)
         int bytesReceived = recvfrom(clientSock, buffer, BUFSIZE, 0, (struct sockaddr *)&threadData->serverAddr, &clientLen);
         validateCommunication(bytesReceived);
         buffer[bytesReceived] = '\0';
-        int status = atoi(strtok(buffer, " "));
+        int status = IdentifyMessage(buffer);
 
         switch (status)
         {
