@@ -3,10 +3,6 @@
 #include <stdlib.h>
 #include "common.h"
 
-#define MIN_PORT_VALUE 1025
-#define MAX_PORT_VALUE 65535
-#define ADDR_LEN 16
-
 void dieWithMessage(char *message)
 {
     printf("%s\n", message);
@@ -79,4 +75,39 @@ int buildUDPSocket(char *portString)
 int sendUdpMessage(int originSock, char *response, struct sockaddr_in *targetSock)
 {
     return sendto(originSock, response, strlen(response), 0, (struct sockaddr *)targetSock, ADDR_LEN);
+}
+
+void assembleMessage(char *buffer, struct Message *message)
+{
+    char finalMessage[BUFFER_SIZE_BYTES] = "";
+    char partialMessage[BUFFER_SIZE_BYTES] = "";
+    if (message->IdMsg)
+    {
+        sprintf(partialMessage, "%d ", message->IdMsg);
+        strcat(finalMessage, partialMessage);
+    }
+    if (message->IdOrigin)
+    {
+        sprintf(partialMessage, "%d ", message->IdOrigin);
+        strcat(finalMessage, partialMessage);
+    }
+    if (message->IdDestination)
+    {
+        sprintf(partialMessage, "%d ", message->IdDestination);
+        strcat(finalMessage, partialMessage);
+    }
+    if (message->Payload)
+    {
+        sprintf(partialMessage, "%d", message->Payload);
+        strcat(finalMessage, partialMessage);
+    }
+    strcat(finalMessage, "\n");
+    strcpy(buffer, finalMessage);
+}
+
+int IdentifyMessage(char *buffer)
+{
+    char *command = strtok(buffer, " ");
+    int id = atoi(command);
+    return id;
 }

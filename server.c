@@ -10,38 +10,7 @@
 
 #define INPUT_ARGS 2
 #define MAX_THREADS 15
-#define MAX_CLIENTS 15
 #define MAX_PENDING 5
-#define BUFSIZE 500
-
-// messages enum
-enum
-{
-    REQ_ADD_ID = 1,
-    REQ_REM_ID,
-    RES_ADD_ID,
-    RES_LIST_ID,
-    REQ_INF_ID,
-    RES_INF_ID,
-    ERROR_ID,
-    OK_ID,
-};
-
-// errors enum
-enum
-{
-    EQUIPMENT_NONE = 0,
-    EQUIPMENT_NOT_FOUND,
-    SOURCE_EQUIPMENT_NOT_FOUND,
-    TARGET_EQUIPMENT_NOT_FOUND,
-    EQUIPMENT_LIMIT_EXCEEDED,
-};
-
-// successes enum
-enum
-{
-    SUCCESFUL_REMOVAL = 1
-};
 
 int serverSock;
 int numberOfThreads = 0;
@@ -57,44 +26,8 @@ struct ThreadArgs
 {
     socklen_t clientLen;
     struct sockaddr_in clientCon;
-    char buffer[BUFSIZE];
+    char buffer[BUFFER_SIZE_BYTES];
 };
-
-struct Message
-{
-    int IdMsg;
-    int IdOrigin;
-    int IdDestination;
-    int Payload;
-};
-
-void assembleMessage(char *buffer, struct Message *message)
-{
-    char finalMessage[BUFSIZE] = "";
-    char partialMessage[BUFSIZE] = "";
-    if (message->IdMsg)
-    {
-        sprintf(partialMessage, "%d ", message->IdMsg);
-        strcat(finalMessage, partialMessage);
-    }
-    if (message->IdOrigin)
-    {
-        sprintf(partialMessage, "%d ", message->IdOrigin);
-        strcat(finalMessage, partialMessage);
-    }
-    if (message->IdDestination)
-    {
-        sprintf(partialMessage, "%d ", message->IdDestination);
-        strcat(finalMessage, partialMessage);
-    }
-    if (message->Payload)
-    {
-        sprintf(partialMessage, "%d", message->Payload);
-        strcat(finalMessage, partialMessage);
-    }
-    strcat(finalMessage, "\n");
-    strcpy(buffer, finalMessage);
-}
 
 void buildERROR(char *buffer, int idDestination, int payload)
 {
@@ -140,13 +73,6 @@ void buildRESLIST(char *buffer)
         sprintf(buffer, "%s%d ", buffer, equipmentsIds[i]);
     }
     sprintf(buffer, "%s\n", buffer);
-}
-
-int IdentifyMessage(char *buffer)
-{
-    char *command = strtok(buffer, " ");
-    int id = atoi(command);
-    return id;
 }
 
 void AddEquipment(char *response, struct sockaddr_in clientCon)
@@ -250,7 +176,7 @@ void *ThreadMain(void *args)
 {
     struct ThreadArgs *threadArgs = (struct ThreadArgs *)args;
     int idMessage = IdentifyMessage(strdup(threadArgs->buffer));
-    char response[BUFSIZE] = "";
+    char response[BUFFER_SIZE_BYTES] = "";
     switch (idMessage)
     {
     case REQ_ADD_ID:
@@ -282,7 +208,7 @@ int main(int argc, char const *argv[])
     {
         struct ThreadArgs *threadArgs = (struct ThreadArgs *)malloc(sizeof(struct ThreadArgs));
         threadArgs->clientLen = clientLen;
-        int bytesReceived = recvfrom(serverSock, threadArgs->buffer, BUFSIZE, 0, (struct sockaddr *)&threadArgs->clientCon, &threadArgs->clientLen);
+        int bytesReceived = recvfrom(serverSock, threadArgs->buffer, BUFFER_SIZE_BYTES, 0, (struct sockaddr *)&threadArgs->clientCon, &threadArgs->clientLen);
         validateCommunication(bytesReceived);
         int firstReqId = IdentifyMessage(strdup(threadArgs->buffer));
         if (numberOfClients == MAX_CLIENTS - 1 && firstReqId == REQ_ADD_ID)
