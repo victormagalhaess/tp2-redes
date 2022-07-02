@@ -24,7 +24,7 @@ enum
 
 int equipmentId = 0;
 int equipments[15];
-int clientSock;
+int clientSock, clientBroadcastSock;
 socklen_t clientLen = sizeof(struct sockaddr_in);
 
 struct ThreadArgs
@@ -158,6 +158,8 @@ void executeCommand(int command, int targetEquipmentID, struct sockaddr_in serve
     }
 }
 
+// this code was actually an adaptation of beejs code to read sockets in a non-blocking way
+// I just made it work with stdin as file descriptor. The time choosen for the timeout is completely arbitrary, hope it works.
 int nonBlockRead(char *message)
 {
     struct timeval tv;
@@ -207,6 +209,38 @@ void processRESADDID()
 {
     equipmentId = atoi(strtok(NULL, " "));
     printf("New ID: %d\n", equipmentId);
+}
+
+void processBroadcastRESADDID()
+{
+    int newEquipment = atoi(strtok(NULL, " "));
+    for (int i = 0; i < MAX_CLIENTS; i++)
+    {
+        if (equipments[i] == newEquipment)
+        {
+            return; // somehow the equipment is already in the list
+        }
+        if (equipments[i] == 0)
+        {
+            equipments[i] = newEquipment;
+            printf("Equipment %d added\n", equipments[i]);
+            return;
+        }
+    }
+}
+
+void processBroadcastREQREMID()
+{
+    int equipmentId = atoi(strtok(NULL, " "));
+    for (int i = 0; i < MAX_CLIENTS; i++)
+    {
+        if (equipments[i] == equipmentId)
+        {
+            equipments[i] = 0;
+            printf("Equipment %d removed\n", equipmentId);
+            return;
+        }
+    }
 }
 
 void processRESLISTID()
@@ -278,6 +312,32 @@ void *ReceiveThread(void *data)
     pthread_exit(NULL);
 }
 
+void *ReceiveBroadcastThread(void *data)
+{
+    struct ThreadArgs *threadData = (struct ThreadArgs *)data;
+    while (1)
+    {
+        char buffer[BUFSIZE];
+        memset(buffer, 0, sizeof(buffer));
+        int bytesReceived = recvfrom(clientBroadcastSock, buffer, BUFFER_SIZE_BYTES, 0, (struct sockaddr *)&threadData->serverAddr, &clientLen);
+        validateCommunication(bytesReceived);
+        buffer[bytesReceived] = '\0';
+        int status = IdentifyMessage(buffer);
+        fflush(stdout); // Somehow, this line is really crucial to the execution of the code, even so I don't know why is it.
+        switch (status)
+        {
+        case RES_ADD_ID:
+            processBroadcastRESADDID();
+            break;
+        case REQ_REM_ID:
+            processBroadcastREQREMID();
+        }
+    }
+
+    free(threadData);
+    pthread_exit(NULL);
+}
+
 void *SendThread(void *data)
 {
     struct ThreadArgs *threadData = (struct ThreadArgs *)data;
@@ -306,6 +366,7 @@ int main(int argc, char const *argv[])
     char *serverPort = strdup(argv[2]);
     int serverPortNumber = getPort(serverPort);
     clientSock = buildUDPSocket("0", UNICAST);
+    clientBroadcastSock = buildUDPSocket(serverPort, UNICAST);
 
     struct sockaddr_in serverAddr;
     serverAddr.sin_family = AF_INET;
@@ -323,6 +384,16 @@ int main(int argc, char const *argv[])
         dieWithMessage("pthread_create failed");
     }
 
+    pthread_t receiveBroadcastThread;
+    struct ThreadArgs *receiveBroadcastThreadArgs = (struct ThreadArgs *)malloc(sizeof(struct ThreadArgs));
+    receiveBroadcastThreadArgs->serverAddr = serverAddr;
+
+    int receiveBroadcastThreadStatus = pthread_create(&receiveBroadcastThread, NULL, ReceiveBroadcastThread, (void *)receiveBroadcastThreadArgs);
+    if (receiveBroadcastThreadStatus != 0)
+    {
+        dieWithMessage("pthread_create failed");
+    }
+
     pthread_t sendThread;
     struct ThreadArgs *sendThreadArgs = (struct ThreadArgs *)malloc(sizeof(struct ThreadArgs));
     sendThreadArgs->serverAddr = serverAddr;
@@ -333,6 +404,7 @@ int main(int argc, char const *argv[])
     }
 
     pthread_join(receiveThread, NULL);
+    pthread_join(receiveBroadcastThread, NULL);
     pthread_join(sendThread, NULL);
 
     return 0; // never reached
