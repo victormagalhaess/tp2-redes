@@ -1,5 +1,16 @@
-// Client side C/C++ program to demonstrate Socket
-// programming
+/*
+Copyright © 2022 Victor Magalhães hello@victordias.dev
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+    http://www.apache.org/licenses/LICENSE-2.0
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 #include "common.h"
 #include <arpa/inet.h>
 #include <stdio.h>
@@ -31,6 +42,8 @@ struct ThreadArgs
 {
     struct sockaddr_in serverAddr;
 };
+
+/* Section: buildMessages */
 
 void buildREQADD(char *buffer)
 {
@@ -73,6 +86,8 @@ void buildRESINFO(char *buffer, int idOrigin, int idDestination)
     buffer[strlen(buffer) - 1] = '\0';
     sprintf(buffer, "%s%d.%d%d\n", buffer, rand() % 9, rand() % 9, rand() % 9); // nice little trick to fake a random decimal number
 }
+
+/* Section: execute commands */
 
 void RequestAdd(struct sockaddr_in serverAddr)
 {
@@ -118,6 +133,8 @@ void ListEquipments()
     printf("\n");
 }
 
+/* Section: command processing */
+
 int parseCommand(char *command, void *targetEquipmentID)
 {
     int *targetEquipmentIDPtr = (int *)targetEquipmentID;
@@ -159,6 +176,7 @@ void executeCommand(int command, int targetEquipmentID, struct sockaddr_in serve
     }
 }
 
+/* Section: input from user */
 // this code was actually an adaptation of beejs code to read sockets in a non-blocking way
 // I just made it work with stdin as file descriptor. The time choosen for the timeout is completely arbitrary, hope it works.
 int nonBlockRead(char *message)
@@ -185,6 +203,8 @@ void readMessage(char *message)
 {
     fgets(message, BUFSIZE - 1, stdin);
 }
+
+/* Section: process special commands */
 
 void processERRORID()
 {
@@ -280,6 +300,8 @@ void processRESINFID()
     printf("Value from %d: %s", originId, payload);
 }
 
+/* Section: threads */
+
 void *ReceiveThread(void *data)
 {
     struct ThreadArgs *threadData = (struct ThreadArgs *)data;
@@ -364,6 +386,7 @@ void *SendThread(void *data)
     pthread_exit(NULL);
 }
 
+/* Section: main */
 int main(int argc, char const *argv[])
 {
     srand(time(0));
