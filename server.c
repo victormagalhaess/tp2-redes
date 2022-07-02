@@ -20,6 +20,7 @@ int equipmentIdCounter = 1;
 int equipmentsIds[MAX_CLIENTS] = {0};
 struct sockaddr_in equipmentsAdresses[MAX_CLIENTS] = {0};
 socklen_t clientLen = sizeof(struct sockaddr_in);
+struct sockaddr_in broadcastAddr;
 
 void *ThreadMain(void *arg);
 
@@ -29,6 +30,12 @@ struct ThreadArgs
     struct sockaddr_in clientCon;
     char buffer[BUFFER_SIZE_BYTES];
 };
+
+void sendBroadcastMessage(char *message)
+{
+    int bytesSent = sendto(broadcastServerSock, message, strlen(message), 0, (struct sockaddr *)&broadcastAddr, sizeof broadcastAddr);
+    validateCommunication(bytesSent);
+}
 
 void buildERROR(char *buffer, int idDestination, int payload)
 {
@@ -76,6 +83,16 @@ void buildRESLIST(char *buffer)
     sprintf(buffer, "%s\n", buffer);
 }
 
+void buildREQREM(char *buffer, int idOrigin)
+{
+    struct Message message;
+    message.IdMsg = REQ_REM_ID;
+    message.IdOrigin = idOrigin;
+    message.IdDestination = 0;
+    message.Payload = 0;
+    assembleMessage(buffer, &message);
+}
+
 void AddEquipment(char *response, struct sockaddr_in clientCon)
 {
     equipmentsIds[numberOfClients] = equipmentIdCounter;
@@ -85,6 +102,7 @@ void AddEquipment(char *response, struct sockaddr_in clientCon)
     numberOfClients++;
     int bytesSent = sendUdpMessage(serverSock, response, &clientCon);
     validateCommunication(bytesSent);
+    sendBroadcastMessage(response);
     buildRESLIST(response);
     bytesSent = sendUdpMessage(serverSock, response, &clientCon);
     validateCommunication(bytesSent);
@@ -109,6 +127,7 @@ int findEquipmentAddress(struct sockaddr_in *clientCon, int id)
 void RemoveEquipment(char *response, struct sockaddr_in originalCon)
 {
     char *command = strtok(NULL, " ");
+    char broadcastMessage[BUFFER_SIZE_BYTES];
     int originId = atoi(command);
     int deleted = 0;
     for (int i = 0; i < MAX_CLIENTS; i++) // logical removal of equipment
@@ -133,6 +152,8 @@ void RemoveEquipment(char *response, struct sockaddr_in originalCon)
     if (deleted)
     {
         buildOK(response, originId, SUCCESFUL_REMOVAL);
+        buildREQREM(broadcastMessage, originId);
+        sendBroadcastMessage(broadcastMessage);
         printf("Equipment %d removed\n", originId);
     }
     else
@@ -205,11 +226,10 @@ int main(int argc, char const *argv[])
     serverSock = buildUDPSocket(portNumber, UNICAST);
     broadcastServerSock = buildUDPSocket(0, BROADCAST);
 
-    struct sockaddr_in broadcastAddr; // Make an endpoint
     memset(&broadcastAddr, 0, sizeof broadcastAddr);
-    broadcastAddr.sin_family = AF_INET; /* Internet address family */
+    broadcastAddr.sin_family = AF_INET;
     broadcastAddr.sin_port = htons((in_port_t)(atoi(port) + 1));
-    broadcastAddr.sin_addr.s_addr = INADDR_BROADCAST; // Set port 8080
+    broadcastAddr.sin_addr.s_addr = INADDR_BROADCAST;
 
     pthread_t threads[MAX_THREADS];
 

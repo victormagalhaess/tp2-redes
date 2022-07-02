@@ -79,7 +79,6 @@ void RequestAdd(struct sockaddr_in serverAddr)
     char message[BUFSIZE];
     buildREQADD(message);
     int totalBytesSent = sendUdpMessage(clientSock, message, &serverAddr);
-    printf("Sent %d bytes\n", totalBytesSent);
     validateCommunication(totalBytesSent);
 }
 
