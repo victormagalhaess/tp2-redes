@@ -129,7 +129,8 @@ int parseCommand(char *command, void *targetEquipmentID)
     {
         return DISCONNECT_EQUIPMENT;
     }
-    if (strcmp(strtok(command, " "), "request") == 0)
+    char *token = strtok(command, " ");
+    if (token != NULL && strcmp(token, "request") == 0)
     {
         strtok(NULL, " "); // information
         strtok(NULL, " "); // from
@@ -213,7 +214,12 @@ void processRESADDID()
 
 void processBroadcastRESADDID()
 {
-    int newEquipment = atoi(strtok(NULL, " "));
+    char *message = strtok(NULL, " ");
+    if (message == NULL)
+    {
+        return;
+    }
+    int newEquipment = atoi(message);
     for (int i = 0; i < MAX_CLIENTS; i++)
     {
         if (equipments[i] == newEquipment)
