@@ -139,6 +139,7 @@ void buildRESLIST(char *buffer)
     {
         sprintf(buffer, "%s%d ", buffer, equipmentsIds[i]);
     }
+    sprintf(buffer, "%s\n", buffer);
 }
 
 int IdentifyMessage(char *buffer)
