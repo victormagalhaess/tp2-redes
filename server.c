@@ -211,7 +211,7 @@ int main(int argc, char const *argv[])
         int bytesReceived = recvfrom(serverSock, threadArgs->buffer, BUFFER_SIZE_BYTES, 0, (struct sockaddr *)&threadArgs->clientCon, &threadArgs->clientLen);
         validateCommunication(bytesReceived);
         int firstReqId = IdentifyMessage(strdup(threadArgs->buffer));
-        if (numberOfClients == MAX_CLIENTS - 1 && firstReqId == REQ_ADD_ID)
+        if (numberOfClients == MAX_CLIENTS && firstReqId == REQ_ADD_ID)
         {
             char response[BUFFER_SIZE_BYTES] = "";
             buildERROR(response, EQUIPMENT_NONE, EQUIPMENT_LIMIT_EXCEEDED);
