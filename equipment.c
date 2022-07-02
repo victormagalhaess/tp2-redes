@@ -79,6 +79,7 @@ void RequestAdd(struct sockaddr_in serverAddr)
     char message[BUFSIZE];
     buildREQADD(message);
     int totalBytesSent = sendUdpMessage(clientSock, message, &serverAddr);
+    printf("Sent %d bytes\n", totalBytesSent);
     validateCommunication(totalBytesSent);
 }
 
@@ -365,13 +366,18 @@ int main(int argc, char const *argv[])
     char *serverIP = strdup(argv[1]);
     char *serverPort = strdup(argv[2]);
     int serverPortNumber = getPort(serverPort);
-    clientSock = buildUDPSocket("0", UNICAST);
-    clientBroadcastSock = buildUDPSocket(serverPort, UNICAST);
+    clientSock = buildUDPSocket(0, UNICAST);
+    clientBroadcastSock = buildUDPSocket(serverPortNumber + 1, UNICAST);
 
     struct sockaddr_in serverAddr;
     serverAddr.sin_family = AF_INET;
     serverAddr.sin_port = htons(serverPortNumber);
     serverAddr.sin_addr.s_addr = inet_addr(serverIP);
+
+    struct sockaddr_in broadcastServerAddr;
+    broadcastServerAddr.sin_family = AF_INET;
+    broadcastServerAddr.sin_port = htons(serverPortNumber + 1);
+    broadcastServerAddr.sin_addr.s_addr = inet_addr(serverIP);
 
     RequestAdd(serverAddr);
 
@@ -386,8 +392,7 @@ int main(int argc, char const *argv[])
 
     pthread_t receiveBroadcastThread;
     struct ThreadArgs *receiveBroadcastThreadArgs = (struct ThreadArgs *)malloc(sizeof(struct ThreadArgs));
-    receiveBroadcastThreadArgs->serverAddr = serverAddr;
-
+    receiveBroadcastThreadArgs->serverAddr = broadcastServerAddr;
     int receiveBroadcastThreadStatus = pthread_create(&receiveBroadcastThread, NULL, ReceiveBroadcastThread, (void *)receiveBroadcastThreadArgs);
     if (receiveBroadcastThreadStatus != 0)
     {

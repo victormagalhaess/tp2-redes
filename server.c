@@ -201,19 +201,15 @@ int main(int argc, char const *argv[])
 {
     validateInputArgs(argc, 2);
     char *port = strdup(argv[1]);
-    serverSock = buildUDPSocket(port, UNICAST);
-    broadcastServerSock = buildUDPSocket("0", BROADCAST);
+    int portNumber = atoi(port);
+    serverSock = buildUDPSocket(portNumber, UNICAST);
+    broadcastServerSock = buildUDPSocket(0, BROADCAST);
 
     struct sockaddr_in broadcastAddr; // Make an endpoint
     memset(&broadcastAddr, 0, sizeof broadcastAddr);
     broadcastAddr.sin_family = AF_INET; /* Internet address family */
-    broadcastAddr.sin_port = htons((in_port_t)atoi(port));
+    broadcastAddr.sin_port = htons((in_port_t)(atoi(port) + 1));
     broadcastAddr.sin_addr.s_addr = INADDR_BROADCAST; // Set port 8080
-
-    // Send the broadcast request, ie "Any upnp devices out there?"
-    char *request = "TESTE BROADCAST";
-    int bytesSent = sendto(broadcastServerSock, request, strlen(request), 0, (struct sockaddr *)&broadcastAddr, sizeof broadcastAddr);
-    validateCommunication(bytesSent);
 
     pthread_t threads[MAX_THREADS];
 

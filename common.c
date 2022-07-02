@@ -36,7 +36,7 @@ int getPort(char *portString)
     return -1; // never reached
 }
 
-int buildUDPSocket(char *portString, int isBroadcast)
+int buildUDPSocket(int port, int isBroadcast)
 {
 
     int sock;
@@ -45,7 +45,6 @@ int buildUDPSocket(char *portString, int isBroadcast)
     struct sockaddr_in address;
 
     int domain = AF_INET;
-    int port = getPort(portString);
 
     if ((sock = socket(domain, SOCK_DGRAM, IPPROTO_UDP)) < 0)
     {
