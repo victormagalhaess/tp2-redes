@@ -84,6 +84,7 @@ void buildRESINFO(char *buffer, int idOrigin, int idDestination)
     message.Payload = 0;
     assembleMessage(buffer, &message);
     buffer[strlen(buffer) - 1] = '\0';
+    printf("requested information\n");
     sprintf(buffer, "%s%d.%d%d\n", buffer, rand() % 9, rand() % 9, rand() % 9); // nice little trick to fake a random decimal number
 }
 
